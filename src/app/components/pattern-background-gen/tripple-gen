@@ -1,0 +1,299 @@
+window.onload = function() {
+
+  const minStitchLength = 20;
+  const maxStitchLength = 40;
+  const minPeriod = 2 // not below 1 !!!
+  const maxPeriod = 3;
+
+  let canv, ctx; // canvas and context
+  let maxx, maxy;
+  let dist;
+  let nbx, nby, orgx, orgy;
+
+  let period, tbPerx, tbPery, tbPerz;
+  let maxkx, maxky
+
+/* for animation */
+  let events = [];
+
+// shortcuts for Math.…
+
+  const mrandom = Math.random;
+  const mfloor = Math.floor;
+  const mround = Math.round;
+  const mceil = Math.ceil;
+  const mabs = Math.abs;
+  const mmin = Math.min;
+  const mmax = Math.max;
+
+  const mPI = Math.PI;
+  const mPIS2 = Math.PI / 2;
+  const m2PI = Math.PI * 2;
+  const msin = Math.sin;
+  const mcos = Math.cos;
+  const matan2 = Math.atan2;
+
+  const mhypot = Math.hypot;
+  const msqrt = Math.sqrt;
+
+  const rac3   = msqrt(3);
+  const rac3s2 = rac3 / 2;
+  const mPIS3 = Math.PI / 3;
+
+//-----------------------------------------------------------------
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+  function intAlea (min, max) {
+// random integer number [min..max[ . If no max is provided, [0..min[
+
+    if (typeof max == 'undefined') {
+      max = min; min = 0;
+    }
+    return mfloor(min + (max - min) * mrandom());
+  } // intAlea
+
+//-----------------------------------------------------------------
+function StitchY (){      // horizontal lines
+
+  this.ky = - maxky;
+  this.kx = - maxkx + tbPery[(this.ky % period + period) % period] - 2;
+
+} // StitchY
+
+StitchY.prototype.stitch = function() {
+
+  let x, y;
+
+  while (this.ky < maxky) {
+    while (this.kx < maxkx) {
+      this.kx += 2; // next stitch
+      [x, y] = screen(this.kx, this.ky);
+      if (y < 0) break; // this line not on screen, go to next line
+      if (y > maxy) return false;
+      if (x > maxx) break; // finished line
+      if (x + dist < 0) continue;
+      ctx.beginPath();
+      ctx.moveTo (x, y);
+      ctx.lineTo (x + dist, y);
+      ctx.stroke();
+      return true; // not finished
+    } // while kx
+    ++this.ky; // next line
+    this.kx = - maxkx + tbPery[(this.ky % period + period) % period] - 2;
+  } // while ky
+  return false; // finished
+
+} // StitchY.prototype.stitch
+
+//-----------------------------------------------------------------
+function StitchX (){      // slanted lines 1
+
+  this.kx = - maxkx;
+  this.ky = - maxky + tbPerx[(this.kx % period + period) % period] - 2;
+
+} // StitchX
+
+StitchX.prototype.stitch = function() {
+
+  let x, y;
+
+  while (this.kx < maxkx) {
+    while (this.ky < maxky) {
+      this.ky += 2;
+      [x, y] = screen(this.kx, this.ky);
+      if (x > maxx) break; // finished with this line
+      if (y > maxy) break; // finished with this line
+      if (y + dist * rac3s2 < 0) continue; // not yet on screen
+      if (x + dist / 2 < 0) continue; // not yet on display
+  // on display : draw it
+      ctx.beginPath();
+      ctx.moveTo (x, y);
+      ctx.lineTo (x + dist / 2, y + dist * rac3s2);
+      ctx.stroke();
+      return true; // not finished
+    } // while kx
+    ++this.kx;
+    this.ky = - maxky + tbPerx[(this.kx % period + period) % period] - 2;
+  } // while ky
+  return false; // finished
+
+} // StitchX.prototype.stitch
+
+//-----------------------------------------------------------------
+function StitchZ (){      // slanted lines 2
+
+  this.kz = -maxkx - maxky;
+  this.ky = - maxky +  tbPerz[(this.kz % period + period) % period] - 2;
+
+} // StitchZ
+
+StitchZ.prototype.stitch = function() {
+
+  let x, y, kx;
+
+  while (this.kz < maxkx + maxky) {
+    while (this.ky < maxky) {
+      this.ky += 2;
+      kx = this.kz - this.ky;
+      [x, y] = screen(kx, this.ky);
+      if (x < 0) break; // finished with this line
+      if (y > maxy) break; // finished with this line
+      if (y + dist * rac3s2 < 0) continue; // not yet on screen
+      if (x - dist / 2 > maxx) continue; // not yet on display
+  // on display : draw it
+      ctx.beginPath();
+      ctx.moveTo (x, y);
+      ctx.lineTo (x - dist / 2, y + dist * rac3s2);
+      ctx.stroke();
+      return true; // not finished
+    } // while ky
+    ++this.kz;
+    this.ky = - maxky +  tbPerz[(this.kz % period + period) % period] - 2;
+  } // while kz
+  return false; // finished
+
+} // StitchZ.prototype.stitch
+
+//-----------------------------------------------------------------
+
+let animate;
+{ // scope for animate
+  let animState = 0;
+
+  let stX, stY, stZ;
+  let sx, sy, sz;
+
+  animate = function(tStamp) {
+    let event = events.pop();
+    requestAnimationFrame(animate)
+    if (event) {
+      switch (event.event) {
+        case 'reset' :
+          animState = 0;
+          break;
+      } // switch (event)
+    } // if (event)
+
+    switch (animState) {
+      case 0 :
+        if (startOver()) {
+          stY = new StitchY();
+          stX = new StitchX();
+          stZ = new StitchZ();
+          ++animState;
+        }
+        break;
+
+      case 1 :
+        sx = stX.stitch();
+        sy = stY.stitch();
+        sz = stZ.stitch();
+        if (!sx && !sy && !sz)++animState;
+        break;
+
+    } // switch (animState)
+
+  } // animate
+
+} // scope for animate
+
+//-----------------------------------------------------------------
+
+function screen (kx, ky) {
+  return [ maxx / 2 + (kx + ky / 2) * dist,
+           maxy / 2 + ky * rac3s2 * dist];
+}
+
+//-----------------------------------------------------------------
+function startOver() {
+// canvas dimensions
+
+  let x, y, kx, ky, kz;
+
+  maxx = window.innerWidth;
+  maxy = window.innerHeight;
+
+  let orgLeft = mmax (((window.innerWidth ) - maxx) / 2, 0);
+  let orgTop = mmax (((window.innerHeight ) - maxy) / 2, 0);
+
+  canv.style.left = orgLeft + 'px';
+  canv.style.top = orgTop + 'px';
+
+  if (maxx != canv.width) canv.width = maxx;
+  if (maxy != canv.height) canv.height = maxy;
+  canv.width = maxx;
+  canv.height = maxy;
+
+  dist = intAlea(minStitchLength, maxStitchLength);
+
+  ctx.strokeStyle = `hsl(${intAlea(360)},${intAlea(60,100)}%,${intAlea(30,90)}%)`;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+
+  maxky = mceil (maxy / dist * rac3 / 2)
+  maxkx = mceil ((maxx / 2 + maxy / 2 / rac3) / dist);
+
+// periodicity
+  period = intAlea(minPeriod, maxPeriod);
+  tbPerx = [];
+  tbPery = [];
+  tbPerz = [];
+
+  for (let k = 0; k < period; ++ k) {
+    tbPerx[k] = intAlea(2);
+    tbPery[k] = intAlea(2);
+    tbPerz[k] = intAlea(2);
+  }
+  return true;
+
+/*
+// horizontal lines
+  for (ky = - maxky; ky < maxky; ++ky) {
+    for (kx = - maxkx + tbPery[(ky % period + period) % period]; kx < maxkx; kx += 2) {
+      [x, y] = screen(kx, ky);
+      ctx.moveTo (x, y);
+      ctx.lineTo (x + dist, y);
+    } // // for x
+  } // for y
+/*
+// slant lines 1
+
+  for (kx = - maxkx ; kx < maxkx; ++kx) {
+    for (ky = - maxky + tbPerx[(kx % period + period) % period]; ky < maxky; ky += 2) {
+      [x, y] = screen(kx, ky);
+      ctx.moveTo (x, y);
+      ctx.lineTo (x + dist / 2, y + dist * rac3s2);
+    } // for ky
+  } // for kx
+
+// slant lines 2
+
+  for (kz = -maxkx - maxky; kz < maxkx + maxky; ++kz) {
+    for (ky = - maxky +  tbPerz[(kz % period + period) % period] ; ky < maxky; ky += 2) {
+      kx = kz - ky;
+      [x, y] = screen(kx, ky);
+      ctx.moveTo (x, y);
+      ctx.lineTo (x - dist / 2, y + dist * rac3s2);
+    }
+  } //
+
+  ctx.stroke();
+  return true;
+*/
+
+} // startOver
+
+//-----------------------------------------------------------------
+// beginning of execution
+
+  {
+    canv = document.createElement('canvas');
+    canv.style.position="absolute";
+    document.body.appendChild(canv);
+    ctx = canv.getContext('2d');
+  } // canvas creation
+
+  document.body.addEventListener('click', () => {events.push({event:"reset"})});
+  events.push({event:'reset'});
+  requestAnimationFrame(animate)
+} // window.onload
